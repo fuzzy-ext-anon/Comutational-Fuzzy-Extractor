@@ -30,4 +30,5 @@ def main(total=1000000, step=20000):
 
 
 if __name__ == "__main__":
-    main(total=1000, step=200)
+    main()
+    
