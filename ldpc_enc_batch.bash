@@ -23,8 +23,8 @@ if [ -f "$FILE" ]; then
     ./make-gen parity.pchk gen.gen dense
 fi
 
-FILE_ENC="e${CLASS}.enc"
-FILE_REC="r${CLASS}.rec"
+FILE_ENC="${CLASS}.enc"
+FILE_REC="${CLASS}.rec"
 
 # Assuming SEED is an integer and ERROR is a double
 # Populate encoded message with errors and send to stdout

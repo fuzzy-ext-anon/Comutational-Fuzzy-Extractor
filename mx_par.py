@@ -1,7 +1,7 @@
 # Imports
 import galois
-from pathos.multiprocessing import ProcessingPool as Pool
-from multiprocessing import Pool
+from multiprocessing.pool import ThreadPool as Pool
+import multiprocessing
 import numpy as np
 
 import time
@@ -41,21 +41,47 @@ def mx_serial(fm, fx, fL, poly):
 
 def f(i):
     '''
-    Gen helper's helper
+    Gen/Rep helper's helper lol
     '''
-    a, b = i
-    return np.matmul(np.load(f"LPN_Matrices/{a}.npy"), b) % 2
+    a, b, m = i
+    return ((a @ b) % 2) ^ m
 
-def gen_helper(read_func, l, keys):
+def gen_helper(matrices, keys, messages):
     '''
     Takes the matrix read fuction, # of lockers, and the iris subsamples
     Returns l products of matrix and subsample (binary vectors)
     '''
-    p = Pool()
 
-    d = p.map(f, zip(range(l), keys))
+    t1 = time.time()
+    p = Pool(processes=multiprocessing.cpu_count() // 3)
+
+    d = p.map(f, zip(matrices, keys, messages))
 
     p.close()
     p.join()
+    t2 = time.time()
+
+    
+    print(f"Parallel took {t2-t1} seconds")
+
+    return d
+
+def rep_helper(matrices, keys, ciphertexts):
+    '''
+    Takes the matrices, keys, and ciphertexts
+    Performs multiplies matrix with key and XORs with ciphertext
+    '''
+
+    t1 = time.time()
+    p = Pool()
+
+    d = p.map(f, zip(matrices, keys, ciphertexts))
+
+    p.close()
+    p.join()
+    t2 = time.time()
+
+    
+    print(f"Parallel took {t2-t1} seconds")
 
     return d

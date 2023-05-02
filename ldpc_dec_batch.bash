@@ -31,12 +31,12 @@ if [ -f "$FILE" ]; then
 fi
 
 # FILENAME="temp${RANDOM}.src"
-FILE_DEC="d${CLASS}-${PROC}.dec"
-FILE_OUT="e${CLASS}-${PROC}.ext"
+FILE_DEC="${CLASS}-${PROC}.dec"
+FILE_OUT="${CLASS}-${PROC}.ext"
 
 # Assuming input CODE is a path to a .rec file
 # Decode the noisy message and store it to d.dec
-./decode -t parity.pchk ${CODE} ${FILE_DEC} bsc "${ERROR}" prprp 75 2>&1
+./decode -t parity.pchk ${CODE} ${FILE_DEC} bsc "${ERROR}" prprp 20 2>&1
 
 # Extract encoded message with errors and store this in r.rec
 ./extract gen.gen ${FILE_DEC} ${FILE_OUT}

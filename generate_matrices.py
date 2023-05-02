@@ -11,7 +11,7 @@ def bitarr(i):
 def generateLPN(bits, k, ecc_len, l, counter):
     t1 = time.time()
     p = Pool()
-    matrices = p.map(lambda a : np.save(f"LPN_Matrices/{a+counter}", np.array([bits(k) for _ in range(ecc_len)])), range(l))
+    matrices = p.map(lambda a : np.save(f"LPN_Matrices/{a+counter}", np.array([bits(k) for _ in range(ecc_len)], dtype=np.uint8)), range(l))
     # np.save("LPN_Arrays/test.npy", self.lpn_matrices[0])
     t2 = time.time()
     print(f"Generated {len(matrices)} LPN matrices in {t2 - t1} seconds")
@@ -31,4 +31,3 @@ def main(total=1000000, step=20000):
 
 if __name__ == "__main__":
     main()
-    
