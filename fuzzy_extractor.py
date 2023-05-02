@@ -7,10 +7,8 @@ import galois
 from PIL import Image
 import multiprocessing
 import hashlib
-import threading
-import sys, time, random
+import time, random
 import mx_par
-import iris_dictionary
 
 
 # RUNS ON PYTHON 3.8.9 +
@@ -51,6 +49,9 @@ class FuzzyExtractor:
         # File prefix
         self.file_prefix = file_prefix
 
+        # Keep track of precise computation time (without disk IO)
+        self.gen_timer = 0
+        self.rep_timer = 0
 
         # Pre-load all matrices
         t=time.time()
@@ -66,10 +67,11 @@ class FuzzyExtractor:
     def read_matrix(self, index):
         return np.load(f"LPN_Matrices/{index}.npy")
 
-    # def LPN_enc_batch(self, A)
-    # * precompute the noisy msg X self.l in GEN
-    # * call the batch enc function with all the LPN matrices & the subsamples
+
     def LPN_batch_enc(self, keys, msgs):
+        '''
+        Encrypts a batch of messages in one call
+        '''
         # Prep the messages to encode (put each on a new line)
         t = time.time()
         with open(f'{self.file_prefix}.src', 'w') as f:
@@ -78,7 +80,6 @@ class FuzzyExtractor:
         # Encode message
         check_output(["./encode", "parity.pchk", "gen.gen", f"{self.file_prefix}.src", f"{self.file_prefix}.enc"])
         
-        t = time.time()
         # Setup for adding errors to l encodings 
         code = []
         with open(f'{self.file_prefix}.enc', 'r') as f:
@@ -87,23 +88,15 @@ class FuzzyExtractor:
         
         with open(f'{self.file_prefix}.enc', 'w') as f:
             f.writelines(code)
-        print(f"Gen: File IO for adding noise took {time.time()-t} seconds")
 
-        t = time.time()
-        # Adding errors
-        # check_output(["./transmit", "e.enc", "r.rec", f"{randbits(32)}", "bsc", f"{self.error_rate}"])
         check_output(["bash", "ldpc_enc_batch.bash", f"-s {randbits(12)}", f"-e {self.error_rate}", "-f", self.file_prefix])
-        print(f"Gen: Adding noise took {time.time()-t} seconds")
-        
 
-        t = time.time()
         # Reading noisy codes
         with open(f'{self.file_prefix}.rec', 'r') as f:
             noisy_msg = f.readlines()
 
         # Transform the str output to a binary vector
         messages = [np.array([int(b) for b in nm.strip()], dtype=np.uint8) for nm in noisy_msg]
-        print(f"Gen: Reading noisy messages and type-casting to np arrays took {time.time()-t} seconds")
         
         # Multiply LPN matrices by the LPN keys (subsamples of iris code)
         t = time.time()
@@ -119,10 +112,8 @@ class FuzzyExtractor:
         Decypts a batch of ciphertexts in one call
         '''
 
-        t = time.time()
         # multiply LPN matrix by the key
         d = [(As[i] @ keys[i]) % 2 ^ ctxts[i] for i in range(len(ctxts))]
-        # print(f"Rep: Process {process} matrix mult in {time.time() - t} seconds")
 
         # Add (mod 2) d and ctxt (assuming ctxt is a numpy array)
         tmp = ''
@@ -130,23 +121,17 @@ class FuzzyExtractor:
             for j in i:
                 tmp += str(j)
 
-        # print(f'Testing LPN_dec_batch. Process id: {process}\n temp: {len(tmp)}')
-        
         # Encode temp into a bitstring
         input_file_name = f'{self.file_prefix}-{process}.rec'
         with open(input_file_name, 'w') as f:
             f.write(tmp)
         
-        t1 = time.time()
         # Call LDPC code (C) and decode temp
         decoded = check_output(["bash", "ldpc_dec_batch.bash", f"-c {input_file_name}", f"-e {self.error_rate}", "-p", str(process), "-f", self.file_prefix])
         decoded = decoded.decode("ASCII").split("\n")
         details, test = [i.split() for i in decoded[1:-3]], decoded[-3]
 
-        # print(f"Rep: Process {process} decoded in {time.time() - t1} seconds")
-        # print(f'Testing LPN_dec_batch. Process id: {process}\n bash script output:',details)
         if (test.split()[3]) == '0':
-            # print(f'Testing LPN_dec_batch. Process id: {process}. All invalid...')
             return np.array([]) # Invalid decryption
         
         print(f'Rep: Testing LPN_dec_batch. Process id: {process}. Found valid decoding!')
@@ -165,60 +150,7 @@ class FuzzyExtractor:
         decoded = out[valid_msg_index].strip()
         
         g_i = np.array([int(b) for b in decoded], dtype=np.uint8)
-        return g_i
-    
-
-    def LPN_dec_batch_serial(self, d, process):
-        '''
-        Decypts a batch of ciphertexts in one call
-        '''
-        t = time.time()
-        # Add (mod 2) d and ctxt (assuming ctxt is a numpy array)
-        tmp = ''
-        for i in d:
-            for j in i:
-                tmp += str(j)
-        print(f"Rep serial: Took {time.time() - t} seconds to convert messages to string")
-
-        # print(f'Testing LPN_dec_batch. Process id: {process}\n temp: {len(tmp)}')
-        
-        t = time.time()
-        # Encode temp into a bitstring
-        input_file_name = f'{self.file_prefix}-{process}.rec'
-        with open(input_file_name, 'w') as f:
-            f.write(tmp)
-        print(f"Rep serial: Created .rec file in {time.time() - t} seconds")
-        
-        t1 = time.time()
-        # Call LDPC code (C) and decode temp
-        decoded = check_output(["bash", "ldpc_dec_batch.bash", f"-c {input_file_name}", f"-e {self.error_rate}", "-p", str(process), "-f", self.file_prefix])
-        decoded = decoded.decode("ASCII").split("\n")
-        details, test = [i.split() for i in decoded[1:-3]], decoded[-3]
-        print(f"Rep serial: Decoded in {time.time() - t1} seconds")
-
-        # print(f'Testing LPN_dec_batch. Process id: {process}\n bash script output:',details)
-        if (test.split()[3]) == '0':
-            # print(f'Testing LPN_dec_batch. Process id: {process}. All invalid...')
-            return np.array([]) # Invalid decryption
-        
-        print(f'Rep: Testing LPN_dec_batch. Process id: {process}. Found valid decoding!')
-        valid_msg_index = -1
-        for i in details:
-            # Layout of i: [index_of_msg, num_of_iterations, valid/invalid (0/1), change%]; 
-            if i[2] == '1':
-                valid_msg_index = int(i[0])
-                break
-        
-
-        output_file_name = f'{self.file_prefix}-{process}.ext'
-        with open(output_file_name, 'r') as f:
-            out = f.readlines()
-
-        decoded = out[valid_msg_index].strip()
-        
-        g_i = np.array([int(b) for b in decoded], dtype=np.uint8)
-        return g_i
-    
+        return g_i    
     
 
     def mac(self, key, ciphertexts):
@@ -280,62 +212,6 @@ class FuzzyExtractor:
         # step 7: Output key R, self.ctexts, and self.T
         return R
         
-    # # w is W' in the paper, ciphertext and T can be found in self.ctexts and self.T respectively
-    def rep_serial(self, w, pwd=np.array([], dtype='B')):
-        #PARALLEL, TEST ONLY
-        samples = []
-
-        for i in range(self.l):
-            # Get a sample of w at positions
-            sample_i = np.array([w[pos] for pos in self.positions[i]], dtype=np.uint8)
-            samples.append(np.concatenate((sample_i,pwd)))
-    
-        split = np.array_split(range(self.l), 100)
-
-        
-        for slice in split:
-            m_slice = []
-            k_slice = []
-            c_slice = []
-            for i in slice:
-                m_slice.append(self.LPN_Matrices[i])
-                k_slice.append(samples[i])
-                c_slice.append(self.ctexts[i])
-
-            t = time.time()
-            d = mx_par.rep_helper(
-                matrices = m_slice,
-                keys = k_slice,
-                ciphertexts=c_slice
-            )
-            print(f"Decrypting 10'000 ciphertexts: {time.time() - t} sec ")
-
-            t = time.time()
-            dec = self.LPN_dec_batch_serial(d, process=0)
-            print(f"Decoding 10'000 ciphertexts: {time.time() - t} sec ")
-
-            if len(dec) > 0: print(dec[:15])
-
-            # STEP iv
-            if not (len(dec) == 0 or dec[:self.t].any()): # i.e., if dec is not None
-                R = ''
-                for c in dec[self.t:self.t + self.xi]:
-                    R += str(c)
-                
-                R_1 = ''
-                for c in dec[self.t + self.xi:]:
-                    R_1 += str(c)
-
-                T_rep = self.mac(R_1, self.ctexts)
-
-                if T_rep == self.T:
-                    print("Check passed")
-                    # with lock:
-                    return R
-        return
-                    
-
-
     # w is W' in the paper, ciphertext and T can be found in self.ctexts and self.T respectively
     def rep_parallel(self, w, pwd=np.array([], dtype='B'), num_processes=1):
         # finished = multiprocessing.Array('b', False)
@@ -360,10 +236,8 @@ class FuzzyExtractor:
 
     
     def rep_process(self, w_, arr_of_indices, finished, process_id, pwd):
-    # def rep_process(self, w_, arr_of_indices, finished, process_id, d):
         for indices in arr_of_indices:
             if any(finished):
-                # print("One of the other threads returned")
                 return 
 
             samples = []
@@ -374,10 +248,8 @@ class FuzzyExtractor:
                 samples.append(np.concatenate((sample_i, pwd)))
                 matrices.append(self.LPN_Matrices[i])
                 ctxts.append(self.ctexts[i])
-            # d_slice = [d[i] for i in indices]
             
             dec = self.LPN_dec_batch(matrices, samples, ctxts, process_id)
-            # dec = self.LPN_dec_batch(d_slice, process_id)
 
             if len(dec) > 0: print(dec[:15])
 
@@ -395,7 +267,6 @@ class FuzzyExtractor:
 
                 if T_rep == self.T:
                     print("Check passed")
-                    # with lock:
                     finished[process_id] = R
                     return
         
@@ -460,7 +331,6 @@ def main(first, toTest):
             pwd=PASSWORD, 
             num_processes=multiprocessing.cpu_count() // 3
         )
-        # b = fe.rep_parallel(ct[5], num_processes=multiprocessing.cpu_count())
         results.append(b)
         t2 = time.time()
         print(f"Ran REP parallel in {t2 - t1} seconds")
@@ -477,24 +347,11 @@ def main(first, toTest):
 
 if __name__ == '__main__':
 
-    # keys = ['04423', '04692', '04857', '04633', '04311', '04347', '04613', '04747', '04632', '04233', '04754', '04876', '04556', '04821', '04730', '04603', '04461', '04703', '04823', '04320', '04890', '04622', '04225', '04763', '04557', '04670', '04810', '04892', '04239', '04916', '04748', '04922', '04843', '04598', '04697', '04349', '04418', '04727', '04907', '04871', '04286', '04888', '04816', '04813', '04725', '04615', '04302', '04689', '04496', '04481', '04853', '04585', '04831', '04893', '04855', '04701', '04904', '04387', '04476', '04838', '04889', '04883', '04827', '04327', '04848', '04673', '04343', '04580', '04509', '04460', '04767', '04774', '04924', '04427', '04866', '04878', '04911', '04863', '04344', '04880', '04797', '04309', '04910', '04470', '04851', '04840', '04724', '04600', '04896', '04934', '04881', '04400', '04869', '04297', '04626', '04839', '04846', '04339', '04768', '04873', '04882', '04803', '04933', '04434', '04449', '04850', '04581', '04683', '04684', '04482', '04514', '04301', '04495', '04914', '04885', '04609', '04811', '04786', '04867', '04350', '04341', '04745', '04596', '04213', '04542', '04629', '04900', '04477', '04505', '04379', '04841', '04530', '04388', '04628', '04738', '04473', '04588', '04587', '04682', '04447', '04872', '04463', '04404', '04849', '04936', '04472', '04324', '04901', '04798', '04511', '04734', '04265', '04334', '04829', '04370', '04815', '04891', '04446', '04765', '04715', '04921', '04719', '04776', '04744', '04711', '04905', '04842', '04833', '04854', '04667', '04456', '04899', '04884', '04419', '04915', '04743', '04336', '04488', '04699', '04312', '04708', '04407', '04372', '04385', '04202', '04201', '04453', '04261', '04898', '04749', '04928', '04894', '02463', '04531', '04772', '04338', '04773', '04822', '04430', '04702', '04319', '04731', '04777', '04647', '04726', '04917', '04709', '04870', '04887', '04691', '04760', '04830', '04631', '04436', '04429', '04493', '04675', '04790', '04451', '04782', '04868', '04485', '04203', '04714', '04716', '04593', '04758', '04475', '04865', '04351', '04221', '04537', '04284', '04847', '04408', '04507', '04757', '04796']
-
-    # input_key = sys.argv[1]
-
-    # key = keys[int(input_key)]
-
-    # irises = iris_dictionary.big_dict[key]
-
     gen_iris = "04560d631"
 
-    # rep_irises = ["04857d138", "04857d136", "04857d196"]
     rep_irises = ['04854d278', '04854d279', '04854d280', '04855d100', '04855d101', '04855d102', '04853d320', '04853d321', '04853d322', '04850d196', '04850d197', '04850d198', '04851d1000', '04851d1001', '04851d1002', '04907d883', '04907d884', '04907d885', '04786d565', '04786d566', '04786d567', '04312d952', '04312d953', '04312d954', '04782d570', '04782d571', '04782d572', '04418d414', '04418d415', '04418d416', '04419d382', '04419d383', '04419d384', '04731d149', '04731d150', '04731d151', '04730d1005', '04730d1006', '04730d1007', '04734d217', '04734d218', '04734d219', '04738d169', '04738d170', '04738d171', '04647d409', '04647d410', '04647d411', '04609d217', '04609d218', '04609d219', '04351d110', '04351d111', '04351d112', '04350d456', '04350d457', '04350d458', '04600d377', '04600d378', '04600d379', '04813d280', '04813d281', '04813d282', '04810d141', '04810d142', '04810d143', '04811d246', '04811d247', '04811d248', '04816d076', '04816d077', '04816d078', '04815d349', '04815d350', '04815d351']
 
     print(gen_iris, rep_irises)
 
     main(first=gen_iris, toTest=rep_irises)
-    # main(first=gen_iris, toTest=[])
-
-    # check_output(["rm", f"{gen_iris}*"])
-
 
