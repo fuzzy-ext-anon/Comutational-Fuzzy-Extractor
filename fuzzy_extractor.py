@@ -17,10 +17,6 @@ import iris_dictionary
 #   (on my system its in /usr/bin/python3, with /usr/bin/pip3 package manager)
 
 
-# For multithreading:
-# finished = []
-# lock = threading.Lock()
-
 class FuzzyExtractor:
 
     def __init__(self, k=43, l=1000000, err=0.11, ecc_len=1224, lbd=128, xi = 128, t=12, file_prefix='', pwd_len=0):
@@ -55,17 +51,11 @@ class FuzzyExtractor:
         # File prefix
         self.file_prefix = file_prefix
 
-        # Keep track of precise computation time (without disk IO)
-        self.gen_timer = 0
-        self.rep_timer = 0
 
         # Pre-load all matrices
         t=time.time()
-        # self.LPN_Matrices = [np.load(f"LPN_Matrices/{index}.npy") for index in range(self.l)]
-        # Temporary speedup by generatng matrices using numpy pseudorandom functions
-        rng = np.random.default_rng()
-        self.LPN_Matrices = [rng.integers(low=0, high=1, endpoint=True, size=(self.nu, (self.k + pwd_len)), dtype=np.uint8) for _ in range(self.l)]
-
+        self.LPN_Matrices = [np.load(f"LPN_Matrices/{index}.npy") for index in range(self.l)]
+        
         print(f"Done initializing. Loaded {len(self.LPN_Matrices)} matrices in {time.time() - t} seconds...")
 
 
