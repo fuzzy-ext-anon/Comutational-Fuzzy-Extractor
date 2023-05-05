@@ -289,13 +289,19 @@ def img_opener(path, mask=False):
     else:
         return [data[i:i+64].flatten() for i in range(0, 384, 64)]
 
+    
+def read_test(path):
+    with open(path, 'r') as f:
+        return json.load(f)
+
 
 def main(first, toTest):
-    mask1 = f"./NEWOutput/NormalizedMasks/{first}_mano.bmp"
-    code1 = f"./NEWOutput/IrisCodes/{first}_code.bmp"
-
-    m1 = img_opener(mask1, mask=True)
-    c1 = [ m1 & c for c in img_opener(code1) ] # XOR all 6 codes (one per Gabor filter pair) with mask here
+   
+    # Read test file 
+    c1 = read_test(first)
+    # "Read" iris mask - artifact from ND-IRIS testing
+    #   NOTE: Test files from `./test_files/` already have masks applied
+    m1 = [1] * len(c1)
 
     PASSWORD_LENGTH = 0
     PASSWORD = np.random.default_rng().integers(low=0, high=1, endpoint=True, size=(PASSWORD_LENGTH), dtype=np.uint8)
@@ -307,9 +313,8 @@ def main(first, toTest):
     t2 = time.time()
     print(f"Initialized (generated lpn arrays & GF(2^128)) in {t2 - t1} seconds")
 
-    # HACK ACCORDING TO FULLERS PAPER (SECTION 4), TRANSFORM #5 HAS THE BEST RATE FOR IMAGES OF SAME IRIS
     a = fe.gen(
-        c1[5],
+        c1,
         m1, 
         pwd=PASSWORD
     )
@@ -319,22 +324,18 @@ def main(first, toTest):
     results = []
 
     for t in toTest:
-        maskt = f"./NEWOutput/NormalizedMasks/{t}_mano.bmp"
-        codet = f"./NEWOutput/IrisCodes/{t}_code.bmp"
-
-        mt = img_opener(maskt, mask=True)
-        ct = [ mt & c for c in img_opener(codet) ] # XOR all 6 codes (one per Gabor filter pair) with mask here
-
+        ct = read_test(t)
+        
         t1 = time.time()
         b = fe.rep_parallel(
-            ct[5], 
+            ct, 
             pwd=PASSWORD, 
             num_processes=multiprocessing.cpu_count() // 3
         )
+
         results.append(b)
         t2 = time.time()
         print(f"Ran REP parallel in {t2 - t1} seconds")
-
 
 
 
@@ -347,11 +348,6 @@ def main(first, toTest):
 
 if __name__ == '__main__':
 
-    gen_iris = "04560d631"
+    main(first="./test_files/test.bin", toTest=["./test_files/same.bin", "./test_files/diff.bin"])
 
-    rep_irises = ['04854d278', '04854d279', '04854d280', '04855d100', '04855d101', '04855d102', '04853d320', '04853d321', '04853d322', '04850d196', '04850d197', '04850d198', '04851d1000', '04851d1001', '04851d1002', '04907d883', '04907d884', '04907d885', '04786d565', '04786d566', '04786d567', '04312d952', '04312d953', '04312d954', '04782d570', '04782d571', '04782d572', '04418d414', '04418d415', '04418d416', '04419d382', '04419d383', '04419d384', '04731d149', '04731d150', '04731d151', '04730d1005', '04730d1006', '04730d1007', '04734d217', '04734d218', '04734d219', '04738d169', '04738d170', '04738d171', '04647d409', '04647d410', '04647d411', '04609d217', '04609d218', '04609d219', '04351d110', '04351d111', '04351d112', '04350d456', '04350d457', '04350d458', '04600d377', '04600d378', '04600d379', '04813d280', '04813d281', '04813d282', '04810d141', '04810d142', '04810d143', '04811d246', '04811d247', '04811d248', '04816d076', '04816d077', '04816d078', '04815d349', '04815d350', '04815d351']
-
-    print(gen_iris, rep_irises)
-
-    main(first=gen_iris, toTest=rep_irises)
 
