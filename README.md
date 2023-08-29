@@ -18,6 +18,7 @@ This software has been tested for Unix systems only (standard Linux distribution
 * This tests `test.bin` against `same.bin` (code of iris from the same class), and `diff.bin` (code of iris from a different class).
 ## PPMR
 * Generate a ciphertext file `ctxt.bin` of length 154'000'000 bytes
+  * Include this file in the same directory as `PPMR_server`
 * Edit the IP adresses and ports in `PPMR_server` and `PPMR_client`
 * Run `python3 PPMR_server` on your first machine
 * Run `python3 PPMR_client` on a different machine
