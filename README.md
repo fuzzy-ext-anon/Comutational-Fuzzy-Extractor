@@ -19,6 +19,8 @@ This software has been tested for Unix systems only (standard Linux distribution
 ## PPMR
 * Generate a ciphertext file `ctxt.bin` of length 154'000'000 bytes
 * Edit the IP adresses and ports in `PPMR_server` and `PPMR_client`
+* Run `python3 PPMR_server` on your first machine
+* Run `python3 PPMR_client` on a different machine
 
 # Further use
 Import `FuzzyExtractor` into your python code. You may need to edit the functions to accept inputs with non-list types
